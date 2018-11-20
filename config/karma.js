@@ -2,8 +2,8 @@
 * In local config, only run tests using phantom js. No code coverage reports applied
 */
 var webpack = require('webpack');
-var webpackConfig = require('./webpack.js');
-var RewirePlugin = require("rewire-webpack");
+require('airbnb-browser-shims');
+var webpackConfig = require('./webpack.common.config.js');
 var path = require('path');
 var argv = require('minimist')(process.argv.slice(2));
 var RELEASE = !!argv.release;
@@ -12,18 +12,6 @@ var BROWSERS = argv.browsers;
 
 
 module.exports = function (config) {
-
-  function getPostLoaders(){
-    var postLoaders = [];
-    if(RELEASE === true){
-      return  [ {
-        test: /\.(js|jsx)$/,
-        exclude: /node_modules/,
-        loader: 'istanbul-instrumenter'
-      } ]
-    }
-    return postLoaders;
-  };
 
   function getReporters(){
     if(RELEASE === true){
@@ -39,27 +27,25 @@ module.exports = function (config) {
       return BROWSERS.split(',');
     }
     if(RELEASE){
-      browsers = ['Chrome','Firefox','IE']
+      browsers = ['Chrome','Firefox', 'IE']
     }else if(DEBUG){
-      browsers = ['Chrome'];
+      browsers = ['ChromeDebugging'];
     }
     return browsers;
   };
 
   function getFiles() {
-    var files;
+    var files = [
+     'node_modules/es5-shim/es5-shim.js',
+     'node_modules/es5-shim/es5-sham.js',
+     'node_modules/es6-shim/es6-shim.js',
+     'node_modules/es6-sham/es6-sham.js'
+    ];
     if(RELEASE === true ||  DEBUG === true) {
-      files = [
-     'node_modules/es5-shim/es5-shim.js',
-     'node_modules/es5-shim/es5-sham.js',
-     'test/FullTests.jsx'
-     ]
+      files.push('test/FullTests.jsx');
     } else {
-    files = [
-     'node_modules/es5-shim/es5-shim.js',
-     'node_modules/es5-shim/es5-sham.js',
-     'test/unitTests.jsx'
-     ]
+      // TODO: cleanup tests
+      files.push('test/unitTests.jsx');
     }
     return files;
   }
@@ -93,16 +79,40 @@ module.exports = function (config) {
     preprocessors: getPreprocessors(),
 
     webpack: {
+      mode: RELEASE ? 'production' : 'development',
+      devtool: 'inline-source-map',
       module: {
-        loaders: webpackConfig.module.loaders,
-        postLoaders : getPostLoaders()
+        rules: [
+          {
+            test: /\.(js|jsx)$/,
+            exclude: /node_modules/,
+            use: [
+              { loader: 'babel-loader', options: { envName: 'test' } }
+            ]
+          },
+          {
+            test: /\.css$/,
+            use: [
+              { loader: 'style-loader' },
+              { loader: 'css-loader' }
+            ]
+          }
+        ]
       },
       resolve: {
-        extensions: ['', '.webpack.js', '.web.js', '.js', '.jsx']
+        extensions: ['.webpack.js', '.web.js', '.js', '.jsx'],
+        alias: {
+          common: path.resolve('packages/common/')
+        }
       },
-      plugins: [
-      new RewirePlugin()
-      ]
+      externals: {
+        'cheerio': 'window',
+        'react/lib/ExecutionEnvironment': true,
+        'react/lib/ReactContext': true,
+        'react/addons': true,
+        // https://github.com/airbnb/enzyme/issues/968
+        'react-addons-test-utils': true
+      }
     },
 
     webpackServer: {
@@ -118,6 +128,8 @@ module.exports = function (config) {
     },
 
     browserNoActivityTimeout: 1000000,
+    browserDisconnectTimeout: 5000,
+    browserDisconnectTolerance: 3,
 
     // coverage reporter generates the coverage
     reporters: ['junit', 'progress', 'coverage'],
@@ -150,15 +162,14 @@ module.exports = function (config) {
     browsers: getBrowsers(),
 
     plugins: [
-    'karma-chrome-launcher',
-    'karma-firefox-launcher',
-    'karma-phantomjs-launcher-nonet',
-    'karma-ie-launcher',
-    'karma-jasmine',
-    'karma-jasmine-matchers',
-    'karma-webpack',
-    'karma-junit-reporter',
-    'karma-coverage'
+      'karma-chrome-launcher',
+      'karma-firefox-launcher',
+      'karma-ie-launcher',
+      'karma-jasmine',
+      'karma-jasmine-matchers',
+      'karma-webpack',
+      'karma-junit-reporter',
+      'karma-coverage'
     ],
 
     customLaunchers: {
@@ -169,6 +180,11 @@ module.exports = function (config) {
       IE8: {
         base: 'IE',
         'x-ua-compatible': 'IE=EmulateIE8'
+      },
+      ChromeDebugging: {
+        base: 'Chrome',
+        flags: [ '--remote-debugging-port=9333' ],
+        debug: true
       }
     },
 
